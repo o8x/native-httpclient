@@ -29,7 +29,7 @@ func NewTcp(link string) *HttpClient {
 	return httpClient
 }
 
-func (h *HttpClient) Get(route string, params map[string]string) (Response, error) {
+func (h *HttpClient) Get(route string, params map[string]string) (*Response, error) {
 	if len(params) > 0 {
 		var queryString []string
 		for param := range params {
@@ -41,27 +41,27 @@ func (h *HttpClient) Get(route string, params map[string]string) (Response, erro
 	return h.Do("GET", route, nil)
 }
 
-func (h *HttpClient) Post(url string, body interface{}) (Response, error) {
+func (h *HttpClient) Post(url string, body interface{}) (*Response, error) {
 	return h.Do("POST", url, body)
 }
 
-func (h *HttpClient) Delete(url string, body interface{}) (Response, error) {
+func (h *HttpClient) Delete(url string, body interface{}) (*Response, error) {
 	return h.Do("DELETE", url, body)
 }
 
-func (h *HttpClient) Put(url string, body interface{}) (Response, error) {
+func (h *HttpClient) Put(url string, body interface{}) (*Response, error) {
 	return h.Do("PUT", url, body)
 }
 
-func (h *HttpClient) Patch(url string, body interface{}) (Response, error) {
+func (h *HttpClient) Patch(url string, body interface{}) (*Response, error) {
 	return h.Do("PATCH", url, body)
 }
 
-func (h *HttpClient) Head(url string, body interface{}) (Response, error) {
+func (h *HttpClient) Head(url string, body interface{}) (*Response, error) {
 	return h.Do("HEAD", url, body)
 }
 
-func (h *HttpClient) Options(url string, body interface{}) (Response, error) {
+func (h *HttpClient) Options(url string, body interface{}) (*Response, error) {
 	return h.Do("OPTIONS", url, body)
 }
 
