@@ -20,24 +20,27 @@ type Data struct {
     Body    string
 }
 
-type HttpClient struct {
-    Network string
-    Address string
-    Headers map[string]string
-    Cookies map[string]string
-    Request struct {
-        Origin  string
-        Payload string
-    }
+type Response struct {
+    ContentType   string
+    ContentLength uint
+    StatusCode    uint
+    Headers       map[string]string
+    Cookies       map[string]string
+    Body          string
+}
 
-    Response struct {
-        ContentType   string
-        ContentLength uint
-        StatusCode    uint
-        Headers       map[string]string
-        Cookies       map[string]string
-        Body          string
-    }
+type Request struct {
+    Origin  string
+    Payload string
+}
+
+type HttpClient struct {
+    Network  string
+    Address  string
+    Headers  map[string]string
+    Cookies  map[string]string
+    Request  Request
+    Response Response
 }
 
 var baseProtocol = `{{ .Method }} {{ .Route }} HTTP/1.1
@@ -45,72 +48,7 @@ Host: {{ .Host }}
 Connection: close
 `
 
-func NewUnixSock(file string) *HttpClient {
-    return &HttpClient{
-        Network: "unix",
-        Address: file,
-        Headers: map[string]string{},
-        Cookies: map[string]string{},
-    }
-}
-
-func NewTcp(link string) *HttpClient {
-    // TODO 443 TLS
-    return &HttpClient{
-        Network: "tcp",
-        Address: link + ":80",
-        Headers: map[string]string{},
-        Cookies: map[string]string{},
-    }
-}
-
-func (h *HttpClient) Get(route string, params map[string]string) (string, error) {
-    if len(params) > 0 {
-        var queryString []string
-        for param := range params {
-            queryString = append(queryString, fmt.Sprintf("%s=%s", param, params[param]))
-        }
-        route = fmt.Sprintf("%s?%s", route, strings.Join(queryString, "&"))
-    }
-
-    return h.Do("GET", route, nil)
-}
-
-func (h *HttpClient) Post(url string, body interface{}) (string, error) {
-    return h.Do("POST", url, body)
-}
-
-func (h *HttpClient) Delete(url string, body interface{}) (string, error) {
-    return h.Do("DELETE", url, body)
-}
-
-func (h *HttpClient) Put(url string, body interface{}) (string, error) {
-    return h.Do("PUT", url, body)
-}
-
-func (h *HttpClient) Patch(url string, body interface{}) (string, error) {
-    return h.Do("PATCH", url, body)
-}
-
-func (h *HttpClient) Head(url string, body interface{}) (string, error) {
-    return h.Do("HEAD", url, body)
-}
-
-func (h *HttpClient) Options(url string, body interface{}) (string, error) {
-    return h.Do("OPTIONS", url, body)
-}
-
-func (h *HttpClient) WithHeader(key string, value string) *HttpClient {
-    h.Headers[key] = value
-    return h
-}
-
-func (h *HttpClient) WithCookie(key string, value string) *HttpClient {
-    h.Cookies[key] = value
-    return h
-}
-
-func (h *HttpClient) MakeProtocol(data interface{}, method, route string) string {
+func (h *HttpClient) makeHttpProtocol(data interface{}, method, route string) string {
     switch t := data.(type) {
     case string:
         h.Request.Payload = t
@@ -146,7 +84,7 @@ func (h *HttpClient) MakeProtocol(data interface{}, method, route string) string
         host = h.Address
     }
 
-    h.Request.Origin = StringTemplate(h.MakeHttpProtocol(method), &Data{
+    h.Request.Origin = StringTemplate(h.restfulHandler(method), &Data{
         method,
         route,
         host,
@@ -158,7 +96,7 @@ func (h *HttpClient) MakeProtocol(data interface{}, method, route string) string
     return strings.ReplaceAll(h.Request.Origin, "\n", "\r\n")
 }
 
-func (h *HttpClient) MakeHttpProtocol(method string) string {
+func (h *HttpClient) restfulHandler(method string) string {
     // TODO 自定义 Content-Type
     // TODO HTTP/2
     // TODO gzip
@@ -178,22 +116,23 @@ Content-Type: application/json;charset=UTF-8
     return baseProtocol + "\n"
 }
 
-func (h *HttpClient) Do(method string, route string, body interface{}) (string,
-    error) {
-
+func (h *HttpClient) Do(method string, route string, body interface{}) (Response, error) {
     conn, err := net.Dial(h.Network, h.Address)
-    conn.Write([]byte(h.MakeProtocol(body, method, route)))
     defer conn.Close()
 
     if err != nil {
-        return "", err
+        return Response{}, err
+    }
+
+    if _, sendErr := conn.Write([]byte(h.makeHttpProtocol(body, method, route))); sendErr != nil {
+        return Response{}, err
     }
 
     // TODO 302 跟随
-    return h.ParseResponse(conn), nil
+    return h.parseResponse(conn), nil
 }
 
-func (h *HttpClient) ParseResponse(conn net.Conn) string {
+func (h *HttpClient) parseResponse(conn net.Conn) Response {
     reader := bufio.NewReader(conn)
     var body bytes.Buffer
     for {
@@ -210,17 +149,17 @@ func (h *HttpClient) ParseResponse(conn net.Conn) string {
     dataStartIndex := strings.Index(response, "\r\n\r\n")
 
     h.Response.Body = response[dataStartIndex+4 : len(response)-4]
-    h.Response.Headers = ParseHeaderString(response[0:dataStartIndex])
-    h.Response.Cookies = ParseCookieString(h.Response.Headers["Set-Cookie"])
-    h.Response.StatusCode = ParseStatusCode(response[0:dataStartIndex])
+    h.Response.Headers = parseHeaderString(response[0:dataStartIndex])
+    h.Response.Cookies = parseCookieString(h.Response.Headers["Set-Cookie"])
+    h.Response.StatusCode = parseStatusCode(response[0:dataStartIndex])
     h.Response.ContentType = h.Response.Headers["Content-Type"]
     length, _ := strconv.Atoi(h.Response.Headers["Content-Length"])
     h.Response.ContentLength = uint(length)
 
-    return h.Response.Body
+    return h.Response
 }
 
-func ParseHeaderString(headers string) map[string]string {
+func parseHeaderString(headers string) map[string]string {
     result := map[string]string{}
     if headers == "" {
         return result
@@ -241,7 +180,7 @@ func ParseHeaderString(headers string) map[string]string {
     return result
 }
 
-func ParseCookieString(cookies string) map[string]string {
+func parseCookieString(cookies string) map[string]string {
     result := map[string]string{}
     if cookies == "" {
         return result
@@ -261,7 +200,7 @@ func ParseCookieString(cookies string) map[string]string {
     return result
 }
 
-func ParseStatusCode(headers string) uint {
+func parseStatusCode(headers string) uint {
     if headers == "" {
         return 500
     }
