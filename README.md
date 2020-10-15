@@ -5,8 +5,8 @@ NATIVE-HTTP-CLIENT
 
 ### 开发计划
 - [x] HTTP
+- [x] 302
 - [ ] 公开 test api
-- [ ] 302
 - [ ] HTTPS
 - [ ] TLS
 - [ ] HTTP2
