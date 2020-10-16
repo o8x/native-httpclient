@@ -7,16 +7,21 @@ import (
 
 func TestUnixSock(t *testing.T) {
 	sock := NewUnixSock("/var/run/docker.sock")
-	post, err := sock.Post("/containers/create?name=nginx", map[string]interface{}{
+
+	created, createErr := sock.Post("/containers/create?name=84b5ffa51d51b", map[string]interface{}{
 		"AutoRemove": true,
-		"Image":      "nginx",
+		"Image":      "centos",
 	})
-
-	if err != nil {
-		fmt.Println("err:", err)
+	if createErr != nil {
+		fmt.Println("createErr:", createErr)
 	}
+	fmt.Println(created)
 
-	fmt.Println(post)
+	killed, killErr := sock.Post("/containers/84b5ffa51d51b/kill", nil)
+	if killErr != nil {
+		fmt.Println("createErr:", killErr)
+	}
+	fmt.Println(killed)
 }
 
 func TestTcp(t *testing.T) {
