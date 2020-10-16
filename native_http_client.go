@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-var UserAgent = "Native_Http_Client/0.3.0"
+var UserAgent = "Native_Http_Client/0.5.0"
 
 type Data struct {
 	Method  string
