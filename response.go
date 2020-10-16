@@ -19,6 +19,7 @@ type Response struct {
 	Headers       map[string]string
 	Cookies       map[string]string
 	Body          string
+	Origin        string
 }
 
 func (r *Response) BodyFormat(declare interface{}) error {
@@ -47,15 +48,18 @@ func (r *Response) responseHandler(conn net.Conn) *Response {
 		}
 	}
 
-	response := body.String()
+	r.Origin = body.String()
 	log.Info("response protocol: ", body.String())
+	dataStartIndex := strings.Index(r.Origin, "\r\n\r\n")
 
-	dataStartIndex := strings.Index(response, "\r\n\r\n")
+	// 避免数据为空
+	if dataStartIndex+4 <= len(r.Origin)-4 {
+		r.Body = r.Origin[dataStartIndex+4 : len(r.Origin)-4]
+	}
 
-	r.Body = response[dataStartIndex+4 : len(response)-4]
-	r.Headers = parseHeaderString(response[0:dataStartIndex])
+	r.Headers = parseHeaderString(r.Origin[0:dataStartIndex])
 	r.Cookies = parseCookieString(r.Headers["Set-Cookie"])
-	r.StatusCode = parseStatusCode(response[0:dataStartIndex])
+	r.StatusCode = parseStatusCode(r.Origin[0:dataStartIndex])
 	r.ContentType = r.Headers["Content-Type"]
 	length, _ := strconv.Atoi(r.Headers["Content-Length"])
 	r.ContentLength = uint(length)
@@ -78,7 +82,7 @@ func parseHeaderString(headers string) map[string]string {
 			continue
 		}
 
-		result[header[0:index]] = header[index+2 : len(header)]
+		result[header[0:index]] = header[index+2:]
 	}
 
 	return result
@@ -98,7 +102,7 @@ func parseCookieString(cookies string) map[string]string {
 			continue
 		}
 
-		result[cookie[0:index]] = cookie[index+1 : len(cookie)]
+		result[cookie[0:index]] = cookie[index+1:]
 	}
 
 	return result
