@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"net"
 	"strings"
 )
+
+var UserAgent = "Native_Http_Client/0.3.0"
 
 type Data struct {
 	Method  string
@@ -42,6 +45,10 @@ Host: {{ .Host }}
 Connection: close
 `
 
+func init() {
+	InitLog()
+}
+
 func (h *HttpClient) makeHttpProtocol(data interface{}, method, route string) string {
 	switch value := data.(type) {
 	case nil:
@@ -53,6 +60,8 @@ func (h *HttpClient) makeHttpProtocol(data interface{}, method, route string) st
 		h.Request.Payload = string(payload)
 	}
 
+	log.Info("request payload: ", h.Request.Payload)
+
 	// 自定义数据类型
 	if _, found := h.Headers["Content-Type"]; !found {
 		h.WithHeader("Content-Type", "application/json;charset=UTF-8")
@@ -60,7 +69,7 @@ func (h *HttpClient) makeHttpProtocol(data interface{}, method, route string) st
 
 	// 自定义数据类型
 	if _, found := h.Headers["User-Agent"]; !found {
-		h.WithHeader("User-Agent", "Native-Http-Client/https://github.com/alex-techs/native-httpclient")
+		h.WithHeader("User-Agent", UserAgent)
 	}
 
 	// 如果没有在 Header 中定义 Cookie，并且自定义 Cookie 不为空
@@ -72,6 +81,8 @@ func (h *HttpClient) makeHttpProtocol(data interface{}, method, route string) st
 			}
 			h.Headers["Cookie"] += fmt.Sprintf("%s=%s; ", key, h.Cookies[key])
 		}
+
+		log.Info("request cookies: ", h.Headers["Cookie"])
 	}
 
 	// 如果有 Header 则追加一个 \r\n
@@ -81,8 +92,10 @@ func (h *HttpClient) makeHttpProtocol(data interface{}, method, route string) st
 			if key == "" {
 				continue
 			}
-			headersBuffer.Write([]byte(fmt.Sprintf("%s: %s\r\n", key, h.Headers[key])))
+			headersBuffer.Write([]byte(fmt.Sprintf("%s: %s\n", key, h.Headers[key])))
 		}
+
+		log.Info("request headers: ", headersBuffer.String())
 	}
 
 	var host = "localhost"
@@ -99,9 +112,9 @@ func (h *HttpClient) makeHttpProtocol(data interface{}, method, route string) st
 		h.Request.Payload,
 	})
 
-	//
-
-	return strings.ReplaceAll(h.Request.Origin, "\n", "\r\n")
+	return strings.ReplaceAll(
+		strings.ReplaceAll(h.Request.Origin, "\r", ""), "\n", "\r\n",
+	)
 }
 
 func (h *HttpClient) restfulHandler(method string) string {
@@ -123,18 +136,26 @@ Accept: */*
 }
 
 func (h *HttpClient) Do(method string, route string, body interface{}) (*Response, error) {
+	log.Info(fmt.Sprintf("request detail, method: %s , route: %s , body: %v", method, route, body))
 	if h.Configs.MaxRedirects > 30 {
+		log.Info("too many redirects")
 		return &Response{}, errors.New("too many redirects")
 	}
 
 	conn, err := net.Dial(h.Network, h.Address)
 	if err != nil {
+		log.Info("ConnectError: ", err.Error())
 		return &Response{}, err
 	}
 
 	defer conn.Close()
 
-	if _, sendErr := conn.Write([]byte(h.makeHttpProtocol(body, method, route))); sendErr != nil {
+	data := h.makeHttpProtocol(body, method, route)
+	jsonData, _ := json.Marshal(data)
+
+	log.Info("request http protocol: ", string(jsonData))
+	if _, sendErr := conn.Write([]byte(data)); sendErr != nil {
+		log.Info("WriteError: ", sendErr.Error())
 		return &Response{}, err
 	}
 
@@ -143,6 +164,7 @@ func (h *HttpClient) Do(method string, route string, body interface{}) (*Respons
 	if response.StatusCode == 302 || response.StatusCode == 301 {
 		h.Configs.MaxRedirects++
 		h.Address = strings.TrimSpace(response.Headers["Location"])
+		log.Info("redirect to: ", h.Address)
 		return h.Do(method, route, body)
 	}
 
