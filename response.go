@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	log "github.com/sirupsen/logrus"
 	"net"
 	"regexp"
 	"strconv"
@@ -47,6 +48,8 @@ func (r *Response) responseHandler(conn net.Conn) *Response {
 	}
 
 	response := body.String()
+	log.Info("response protocol: ", body.String())
+
 	dataStartIndex := strings.Index(response, "\r\n\r\n")
 
 	r.Body = response[dataStartIndex+4 : len(response)-4]
